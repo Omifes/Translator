@@ -1,0 +1,13 @@
+hello | привет
+world | мир
+look | смотреть
+look forward to | с нетерпением ждать
+good morning | доброе утро
+cat | кот
+dog | собака
+house | дом
+car | машина
+computer | компьютер
+and | и
+i | я
+this | это
