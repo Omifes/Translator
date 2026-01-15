@@ -10,4 +10,5 @@ car | машина
 computer | компьютер
 and | и
 i | я
+i have | у меня есть
 this | это

@@ -14,8 +14,23 @@ class FileReadException extends Exception {
     }
 }
 
+class TrieNode {
+    Map<String, TrieNode> children;
+    String translation;
+
+    public TrieNode() {
+        this.children = new HashMap<>();
+        this.translation = null;
+    }
+
+    public boolean hasTranslation() {
+        return translation != null;
+    }
+}
+
 public class Translator {
-    private final Map<String, String> dictionary = new HashMap<>();
+    private final TrieNode root = new TrieNode();
+    private int dictionarySize = 0;
 
     public static void main(String[] args) {
         Translator translator = new Translator();
@@ -38,7 +53,8 @@ public class Translator {
     }
 
     public void readDictionary(String filename) throws InvalidFileFormatException, FileReadException {
-        dictionary.clear();
+        root.children.clear();
+        dictionarySize = 0;
 
         try {
             List<String> lines = Files.readAllLines(Paths.get(filename));
@@ -54,22 +70,22 @@ public class Translator {
                     );
                 }
 
-                String word = parts[0].trim().toLowerCase();
+                String phrase = parts[0].trim();
                 String translation = parts[1].trim();
 
-                if (word.isEmpty() || translation.isEmpty()) {
+                if (phrase.isEmpty() || translation.isEmpty()) {
                     throw new InvalidFileFormatException(
                             String.format("Пустое слово или перевод в строке %d", i + 1)
                     );
                 }
 
-                if (!dictionary.containsKey(word) ||
-                        dictionary.get(word).length() < translation.length()) {
-                    dictionary.put(word, translation);
-                }
+                String[] words = phrase.toLowerCase().split("\\s+");
+
+                addToTrie(words, translation);
+                dictionarySize++;
             }
 
-            System.out.println("Словарь загружен. Записей: " + dictionary.size());
+            System.out.println("Записей в словаре: " + dictionarySize);
 
         } catch (NoSuchFileException e) {
             throw new FileReadException("Файл не найден: " + filename);
@@ -77,6 +93,21 @@ public class Translator {
             throw new FileReadException("Нет доступа к файлу: " + filename);
         } catch (IOException e) {
             throw new FileReadException("Ошибка ввода-вывода при чтении файла: " + filename);
+        }
+    }
+
+    private void addToTrie(String[] words, String translation) {
+        TrieNode current = root;
+
+        for (String word : words) {
+
+            current.children.putIfAbsent(word, new TrieNode());
+            current = current.children.get(word);
+        }
+
+        if (current.translation == null ||
+                current.translation.length() < translation.length()) {
+            current.translation = translation;
         }
     }
 
@@ -99,12 +130,12 @@ public class Translator {
             return "";
         }
 
-        String[] words = text.split("(?<=\\b)|(?=\\b)");
+        String[] tokens = text.split("(?<=\\b)|(?=\\b)");
         StringBuilder result = new StringBuilder();
         int i = 0;
 
-        while (i < words.length) {
-            String token = words[i];
+        while (i < tokens.length) {
+            String token = tokens[i];
 
             if (!token.matches("\\w+")) {
                 result.append(token);
@@ -112,23 +143,13 @@ public class Translator {
                 continue;
             }
 
-            String bestMatch = findBestMatch(words, i);
+            TranslationMatch match = findLongestMatch(tokens, i);
 
-            if (bestMatch != null) {
-                result.append(dictionary.get(bestMatch));
-
-                int wordsInPhrase = bestMatch.split(" ").length;
-                int tokensInPhrase = wordsInPhrase * 2 - 1;
-
-                i += tokensInPhrase;
-
+            if (match != null) {
+                result.append(match.translation);
+                i = match.endIndex;
             } else {
-                String singleWord = token.toLowerCase();
-                if (dictionary.containsKey(singleWord)) {
-                    result.append(dictionary.get(singleWord));
-                } else {
-                    result.append(token);
-                }
+                result.append(token);
                 i++;
             }
         }
@@ -136,35 +157,50 @@ public class Translator {
         return result.toString();
     }
 
-    private String findBestMatch(String[] words, int startIndex) {
-        String bestMatch = null;
-        StringBuilder phrase = new StringBuilder();
+    private TranslationMatch findLongestMatch(String[] tokens, int startIndex) {
+        TrieNode current = root;
+        TranslationMatch bestMatch = null;
+        int tokenIndex = startIndex;
 
-        for (int i = startIndex; i < words.length; i++) {
-            String word = words[i];
+        while (tokenIndex < tokens.length) {
+            String token = tokens[tokenIndex];
 
-            if (word.matches("\\s+")) {
+            if (token.matches("\\s+")) {
+                tokenIndex++;
                 continue;
             }
 
-            if (!word.matches("\\w+")) {
+            if (!token.matches("\\w+")) {
                 break;
             }
 
-            if (phrase.length() > 0) {
-                phrase.append(" ");
-            }
-            phrase.append(word);
+            String word = token.toLowerCase();
+            current = current.children.get(word);
 
-            String currentPhrase = phrase.toString().toLowerCase();
-
-            if (dictionary.containsKey(currentPhrase)) {
-                if (bestMatch == null || currentPhrase.length() > bestMatch.length()) {
-                    bestMatch = currentPhrase;
-                }
+            if (current == null) {
+                break;
             }
+
+            if (current.hasTranslation()) {
+                bestMatch = new TranslationMatch(
+                        current.translation,
+                        tokenIndex + 1
+                );
+            }
+
+            tokenIndex++;
         }
 
         return bestMatch;
+    }
+
+    private static class TranslationMatch {
+        String translation;
+        int endIndex;
+
+        TranslationMatch(String translation, int endIndex) {
+            this.translation = translation;
+            this.endIndex = endIndex;
+        }
     }
 }
